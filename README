@@ -1,0 +1,17 @@
+pywebquery is a web crawler lib inspired by jQuery.It's based on famous XML/HTML parse lib BeautifulSoup.The predefined download method inside the lib is based on wget.
+
+You can use this lib in a jQuery way or a pythonic way such:
+
+for item in Page("http://www.stackoverflow.com").find(".question-hyperlink:title[android]").attr("href"):
+    print item
+
+Than you get all the question-link about android in the home page of StackOverFlow.
+
+What about the content?
+
+for item in Page("http://www.stackoverflow.com").find(".question-hyperlink:title[android]").follow().find(".question.post-text").text():
+    print item 
+
+Wow,you get all the question !
+
+

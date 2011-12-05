@@ -10,7 +10,7 @@ cookieJar = cookielib.LWPCookieJar()
 opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
 urllib2.install_opener(opener) 
 
-defaultHeader = {'User-agent' : 'Mozilla/4.0 (compatible; MSIE 5.5; Windows NT)'}  
+defaultHeader = {'User-agent' : 'Mozilla/10.0 (compatible; MSIE 5.5; Win7)'}  
 def setHeader(header):
     global defaultHeader
     defaultHeader = header
@@ -151,7 +151,8 @@ class Page(object):
         - `selector`:basic css selector support
         """
         return Query(self,selectors)
-
+    def text(self):
+        return "".join(BeautifulSoup(self._HTML).findAll(text=True))
 
 class PageSet(list):
     """a collection of Pages from
@@ -165,6 +166,11 @@ class PageSet(list):
         for page in self:
             querySet.append(page.find(selectors))
         return querySet
+    def text(self):
+        result = []
+        for item in self:
+            result.extend(item.text())
+        return result
 
 class Query(object):
     """Action to filter dom or and do some action indicate by dom or page
@@ -209,15 +215,20 @@ class Query(object):
                 goodSelectorValue = content[content.index("[")+1:-1]
                 soupResult = self._advancedFilter(soup,goodSelectorType,goodSelectorValue)
             else:
-                soupResult = soup.findAll(attrs={typeMap[item["selectorType"]]:item["selectorValue"]})
+                t = item["selectorType"]
+                v = item["selectorValue"]
+                soupResult = soup.findAll(lambda tag:tag.has_key(typeMap[t]) and v in tag[typeMap[t]].split(" "))
             soup = BeautifulSoup(str(soupResult))
+            
         return soupResult
+    
+
     def _advancedFilter(self,soup,selectorType,selectorValue):
         
         keywords = selectorValue.split("&")
         if selectorType == "text": 
             return soup.findAll(lambda tag:hasWords("".join(tag.findAll(text=True)),keywords))
-        else:# selectorType == "src" or selectorType == "href" or selectorType == "title":
+        else:
             return soup.findAll(lambda tag:tag.has_key(selectorType) and hasWords(tag[selectorType],keywords))
         
     def _download(self,url,path=None,referer="www.google.com"):
@@ -246,12 +257,17 @@ class Query(object):
     
     def __getitem__(self,i):
         return self._soupResult[i]
-    
+    def __iter__(self):
+        return self._soupResult.__iter__()
     def find(self,selectors):
         return Query(self._Page,selectors,BeautifulSoup(str(self._soupResult)))
-    
     def follow(self,keyword="*"):
+        """follow the a tag with href
         
+        Arguments:
+        - `self`:
+        - `keyword`:
+        """ 
         soupResult = BeautifulSoup(str(self._soupResult)).findAll(lambda tag:tag.has_key("href") and (keyword=="*" or keyword in tag["href"]))
         baseURL = self._Page._URL
         pageSet = PageSet()
@@ -261,6 +277,7 @@ class Query(object):
             pageSet.append(self._Page.goto(targetURL))
         return pageSet
     def download(self,keyword="*",fileNameGenerator = None,directAddress = None):
+        """ download the tag with a href attribution using wget"""
         if directAddress!=None:
             try:
                 self._download(directAddress,referer=self._Page._URL)
@@ -280,10 +297,15 @@ class Query(object):
             self._download(targetURL,path=name,referer=self._Page._URL)
             counter+=1
         return counter
-    def attr(attrName):
-        results = self._soupResult.findAll(lambda tag:tag.has_key(attrName))
+    def attr(self,attrName):
+        """get all the specified attribution value"""
+        results = BeautifulSoup(str(self._soupResult)).findAll(lambda tag:tag.has_key(attrName))
         return [item[attrName] for item in results]
-
+    def text(self):
+        result = []
+        for item in self._soupResult:
+            result.append("".join(BeautifulSoup(str(item)).findAll(text=True)))
+        return result
     def downloadSrc(self,keyword="*",fileNameGenerator = None):
         soupResult = BeautifulSoup(str(self._soupResult)).findAll(lambda tag:tag.has_key("src") and keyword=="*" or keyword in tag["src"])
         baseURL = self._Page._URL
@@ -317,7 +339,18 @@ class QuerySet(list):
             counter+=len(item)
         else:
             raise IndexError
-        
+    def attr(self,attrName):
+        "get all the attrName specified attribution value"
+        result = []
+        for item in self:
+            result.extend(item.attr(attrName))
+        return result
+    def text(self):
+        "get all text in the match the tag"
+        result = []
+        for item in self:
+            result.extend(item.text())
+        return result
     def find(self,selectors):
         """find match DOM in the current querys
         
@@ -331,16 +364,19 @@ class QuerySet(list):
         return querySet
     
     def follow(self,keyword="*"):
+        """follow all the link match the keyword or use * if you want just follow all links of the matched tag"""
         pageSet = PageSet()
         for item in self: 
             pageSet.extend(item.follow(keyword))
         return pageSet
     def download(self,keyword="*",fileNameGenerator = None):
+        """using wget to download matched tag hrefmuse git fileNameGenerator a generator to name every element"""
         counter = 0
         for item in self:
             counter += item.download(keyword,fileNameGenerator)
         return counter
     def downloadSrc(self,keyword="*",fileNameGenerator = None):
+        """ download images """
         counter = 0
         for item in self:
             counter += item.downloadSrc(keyword,fileNameGenerator)
